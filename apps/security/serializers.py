@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto
 
 
 class RolSerializer(serializers.ModelSerializer):
@@ -61,22 +61,61 @@ class NegocioSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Negocio
-        fields = ['id', 'propietario', 'nombre', 'descripcion', 'direccion', 'categoria', 'activo', 'created_at']
+        fields = [
+            'id', 'propietario', 'nombre', 'descripcion',
+            'direccion', 'categoria', 'activo', 'created_at',
+            'ruc', 'razon_social', 'telefono',
+            'hora_apertura', 'hora_cierre', 'dias_atencion',
+        ]
 
 
 class NegocioCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Negocio
-        fields = ['nombre', 'descripcion', 'direccion', 'categoria']
+        fields = [
+            'nombre', 'descripcion', 'direccion', 'categoria',
+            'ruc', 'razon_social', 'telefono',
+            'hora_apertura', 'hora_cierre', 'dias_atencion',
+        ]
 
     def create(self, validated_data):
         return Negocio.objects.create(**validated_data)
 
 
 class ProductoSerializer(serializers.ModelSerializer):
+    categoria_label = serializers.SerializerMethodField()
+
     class Meta:
         model  = Producto
-        fields = ['id', 'negocio', 'nombre', 'descripcion', 'precio', 'disponible']
+        fields = [
+            'id', 'negocio', 'nombre', 'descripcion', 'precio', 'categoria', 'categoria_label', 'disponible', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['negocio', 'created_at', 'updated_at']
+
+    def get_categoria_label(self, obj):
+        return obj.get_categoria_display()
+    
+class HistorialCambioSerializer(serializers.ModelSerializer):
+    tipo_cambio_label = serializers.SerializerMethodField()
+    usuario_nombre    = serializers.SerializerMethodField()
+    producto_nombre   = serializers.CharField(source='producto.nombre', read_only=True)
+
+    class Meta:
+        model  = HistorialCambioProducto
+        fields = [
+            'id', 'producto', 'producto_nombre',
+            'usuario', 'usuario_nombre',
+            'tipo_cambio', 'tipo_cambio_label',
+            'valor_anterior', 'valor_nuevo', 'comentario', 'fecha'
+        ]
+
+    def get_tipo_cambio_label(self, obj):
+        return obj.get_tipo_cambio_display()
+
+    def get_usuario_nombre(self, obj):
+        if obj.usuario:
+            return f'{obj.usuario.nombre} {obj.usuario.apellido}'.strip()
+        return 'Sistema'
 
 
 class DetallePedidoSerializer(serializers.ModelSerializer):
@@ -86,10 +125,38 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
 
 
 class PedidoSerializer(serializers.ModelSerializer):
-    detalles   = DetallePedidoSerializer(many=True, read_only=True)
-    cliente    = UsuarioSerializer(read_only=True)
-    repartidor = UsuarioSerializer(read_only=True)
+    detalles      = DetallePedidoSerializer(many=True, read_only=True)
+    cliente       = UsuarioSerializer(read_only=True)
+    repartidor    = UsuarioSerializer(read_only=True)
+    estado_label  = serializers.SerializerMethodField()
+    negocio_info  = serializers.SerializerMethodField()
 
     class Meta:
         model  = Pedido
-        fields = ['id', 'cliente', 'negocio', 'repartidor', 'estado', 'total', 'direccion_entrega', 'detalles', 'created_at']
+        fields = [
+            'id', 'cliente', 'negocio', 'negocio_info', 'repartidor',
+            'estado', 'estado_label', 'total', 'direccion_entrega',
+            'motivo_cancelacion',   # ← nuevo
+            'detalles', 'created_at'
+        ]
+
+    def get_estado_label(self, obj):
+        labels = {
+            'pendiente':  'Pendiente',
+            'confirmado': 'Confirmado',
+            'en_camino':  'En camino',
+            'entregado':  'Entregado',
+            'cancelado':  'Cancelado',
+            'completado': 'Completado',  # ← nuevo
+        }
+        return labels.get(obj.estado, obj.estado)
+
+    def get_negocio_info(self, obj):
+        n = obj.negocio
+        return {
+            'id':        n.id,
+            'nombre':    n.nombre,
+            'categoria': n.categoria,
+            'direccion': n.direccion,
+            'telefono':  n.telefono,
+        }

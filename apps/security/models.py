@@ -5,7 +5,6 @@ from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 
-
 class Rol(models.Model):
     ROLES = [
         ('admin',       'Administrador'),
@@ -66,6 +65,9 @@ class Negocio(models.Model):
         ('restaurante', 'Restaurante'),
         ('tienda',      'Tienda'),
         ('farmacia',    'Farmacia'),
+        ('bodega',       'Bodega'),
+        ('mercado',       'Mercado'),
+        ('postres',       'Postres'),
         ('otro',        'Otro'),
     ]
     propietario  = models.OneToOneField(
@@ -78,19 +80,38 @@ class Negocio(models.Model):
     activo       = models.BooleanField(default=True)
     created_at   = models.DateTimeField(auto_now_add=True)
 
+    ruc           = models.CharField(max_length=11, blank=True)
+    razon_social  = models.CharField(max_length=200, blank=True)
+    telefono      = models.CharField(max_length=9, blank=True)
+    hora_apertura = models.TimeField(null=True, blank=True)
+    hora_cierre   = models.TimeField(null=True, blank=True)
+    dias_atencion = models.JSONField(default=list, blank=True)
+
     class Meta:
         db_table = 'negocio'
 
     def __str__(self):
         return self.nombre
 
-
 class Producto(models.Model):
+    CATEGORIAS = [
+        ('comida',     'Comida'),
+        ('bebida',     'Bebida'),
+        ('postre',     'Postre'),
+        ('snack',      'Snack'),
+        ('medicina',   'Medicina'),
+        ('higiene',    'Higiene'),
+        ('abarrotes',  'Abarrotes'),
+        ('otro',       'Otro'),
+    ]
     negocio      = models.ForeignKey(Negocio, on_delete=models.CASCADE, related_name='productos')
     nombre       = models.CharField(max_length=150)
     descripcion  = models.TextField(blank=True)
     precio       = models.DecimalField(max_digits=8, decimal_places=2)
+    categoria    = models.CharField(max_length=50, choices=CATEGORIAS, default='otro')  # Añadido
     disponible   = models.BooleanField(default=True)
+    created_at   = models.DateTimeField(auto_now_add=True, null=True, blank=True)       # Añadido
+    updated_at   = models.DateTimeField(auto_now=True, null=True, blank=True)           # Añadido
 
     class Meta:
         db_table = 'producto'
@@ -98,6 +119,35 @@ class Producto(models.Model):
     def __str__(self):
         return f'{self.nombre} — S/ {self.precio}'
 
+class HistorialCambioProducto(models.Model):
+    TIPOS = [
+        ('creacion',     'Creación'),
+        ('precio',       'Modificación de precio'),
+        ('disponible',   'Cambio de disponibilidad'),
+        ('nombre',       'Cambio de nombre'),
+        ('descripcion',  'Cambio de descripción'),
+        ('categoria',    'Cambio de categoría'),
+        ('eliminacion',  'Eliminación'),
+    ]
+    producto       = models.ForeignKey(
+        Producto, on_delete=models.CASCADE, related_name='historial'
+    )
+    usuario        = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cambios_producto'
+    )
+    tipo_cambio    = models.CharField(max_length=20, choices=TIPOS)
+    valor_anterior = models.CharField(max_length=255, blank=True, default='')
+    valor_nuevo    = models.CharField(max_length=255, blank=True, default='')
+    comentario     = models.CharField(max_length=255, blank=True, default='')
+    fecha          = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'historial_cambio_producto'
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f'[{self.fecha:%Y-%m-%d %H:%M}] {self.producto.nombre} — {self.tipo_cambio}'
 
 class Pedido(models.Model):
     ESTADOS = [
@@ -106,6 +156,7 @@ class Pedido(models.Model):
         ('en_camino',   'En camino'),
         ('entregado',   'Entregado'),
         ('cancelado',   'Cancelado'),
+        ('completado',  'Completado'),
     ]
     cliente           = models.ForeignKey(
         Usuario, on_delete=models.PROTECT, related_name='pedidos_como_cliente'
@@ -121,6 +172,7 @@ class Pedido(models.Model):
     total             = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     direccion_entrega = models.CharField(max_length=255)
     created_at        = models.DateTimeField(auto_now_add=True)
+    motivo_cancelacion = models.TextField(blank=True, null=True)
 
     class Meta:
         db_table = 'pedido'
@@ -141,7 +193,6 @@ class DetallePedido(models.Model):
     def __str__(self):
         return f'{self.cantidad}x {self.producto.nombre}'
     
-
 class PasswordResetToken(models.Model):
     user       = models.ForeignKey(
                     settings.AUTH_USER_MODEL,
@@ -161,3 +212,4 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"Token de {self.user.email} — {'válido' if self.is_valid() else 'expirado'}"
+    

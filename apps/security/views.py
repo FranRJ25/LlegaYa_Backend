@@ -8,14 +8,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.mail import send_mail
 from django.conf import settings
+from decimal import Decimal, InvalidOperation
 import os
 
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto
 from .serializers import (
     RegisterSerializer, UsuarioSerializer,
     CustomTokenObtainPairSerializer,
     NegocioSerializer, NegocioCreateSerializer,
     ProductoSerializer, PedidoSerializer,
+    HistorialCambioSerializer
 )
 from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegocio, EsAdminORepartidor
 
@@ -182,6 +184,16 @@ class MiNegocioView(APIView):
             return Response(NegocioSerializer(negocio).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def put(self, request):
+        try:
+            negocio = request.user.negocio
+        except Negocio.DoesNotExist:
+            return Response({'error': 'No tienes un negocio registrado'}, status=404)
+        serializer = NegocioCreateSerializer(negocio, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(NegocioSerializer(negocio).data)
+        return Response(serializer.errors, status=400)
 
 class ListaNegociosView(APIView):
     """
@@ -200,25 +212,247 @@ class ListaNegociosView(APIView):
 # PRODUCTOS
 # ──────────────────────────────────────────
 
+def _registrar_cambio(producto, usuario, tipo, valor_anterior='', valor_nuevo='', comentario=''):
+    """Helper para crear entradas del historial."""
+    return HistorialCambioProducto.objects.create(
+        producto=producto,
+        usuario=usuario,
+        tipo_cambio=tipo,
+        valor_anterior=str(valor_anterior) if valor_anterior is not None else '',
+        valor_nuevo=str(valor_nuevo) if valor_nuevo is not None else '',
+        comentario=comentario,
+    )
+
 class ProductosNegocioView(APIView):
     """
-    GET  /api/auth/negocio/productos/          → ver mis productos
-    POST /api/auth/negocio/productos/          → crear producto
-    Requiere: tener un negocio registrado.
+    GET  /api/auth/negocio/productos/   → ver mis productos (HU05)
+    POST /api/auth/negocio/productos/   → crear producto (HU05)
     """
     permission_classes = [IsAuthenticated, EsPropietarioDeNegocio]
 
     def get(self, request):
-        productos = Producto.objects.filter(negocio=request.user.negocio)
+        productos = Producto.objects.filter(negocio=request.user.negocio).order_by('-created_at', '-id')
         return Response(ProductoSerializer(productos, many=True).data)
 
     def post(self, request):
         serializer = ProductoSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(negocio=request.user.negocio)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            producto = serializer.save(negocio=request.user.negocio)
+            _registrar_cambio(
+                producto=producto,
+                usuario=request.user,
+                tipo='creacion',
+                valor_nuevo=producto.nombre,
+                comentario=f'Precio inicial: S/ {producto.precio}',
+            )
+            return Response(ProductoSerializer(producto).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class ProductoDetalleView(APIView):
+    """
+    GET    /api/auth/negocio/productos/<id>/   → ver producto
+    PUT    /api/auth/negocio/productos/<id>/   → editar completo
+    PATCH  /api/auth/negocio/productos/<id>/   → editar parcial
+    DELETE /api/auth/negocio/productos/<id>/   → eliminar producto
+    """
+    permission_classes = [IsAuthenticated, EsPropietarioDeNegocio]
+
+    def _get_producto(self, request, pk):
+        try:
+            return Producto.objects.get(pk=pk, negocio=request.user.negocio)
+        except Producto.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        producto = self._get_producto(request, pk)
+        if not producto:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ProductoSerializer(producto).data)
+
+    def _aplicar_cambios(self, producto, request, partial=False):
+        anteriores = {
+            'nombre':      producto.nombre,
+            'descripcion': producto.descripcion,
+            'precio':      producto.precio,
+            'categoria':   producto.categoria,
+            'disponible':  producto.disponible,
+        }
+        serializer = ProductoSerializer(producto, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            return None, Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        producto = serializer.save()
+
+        cambios = []
+        if str(anteriores['precio']) != str(producto.precio):
+            _registrar_cambio(producto, request.user, 'precio',
+                              f'S/ {anteriores["precio"]}', f'S/ {producto.precio}')
+            cambios.append('precio')
+        if anteriores['disponible'] != producto.disponible:
+            _registrar_cambio(producto, request.user, 'disponible',
+                              'Disponible' if anteriores['disponible'] else 'No disponible',
+                              'Disponible' if producto.disponible else 'No disponible')
+            cambios.append('disponible')
+        if anteriores['nombre'] != producto.nombre:
+            _registrar_cambio(producto, request.user, 'nombre',
+                              anteriores['nombre'], producto.nombre)
+            cambios.append('nombre')
+        if anteriores['descripcion'] != producto.descripcion:
+            _registrar_cambio(producto, request.user, 'descripcion',
+                              anteriores['descripcion'][:80] or '(vacío)',
+                              producto.descripcion[:80] or '(vacío)')
+            cambios.append('descripcion')
+        if anteriores['categoria'] != producto.categoria:
+            _registrar_cambio(producto, request.user, 'categoria',
+                              anteriores['categoria'], producto.categoria)
+            cambios.append('categoria')
+
+        return producto, Response(
+            {**ProductoSerializer(producto).data, 'cambios_registrados': cambios},
+            status=status.HTTP_200_OK,
+        )
+
+    def put(self, request, pk):
+        producto = self._get_producto(request, pk)
+        if not producto:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        _, resp = self._aplicar_cambios(producto, request, partial=False)
+        return resp
+
+    def patch(self, request, pk):
+        producto = self._get_producto(request, pk)
+        if not producto:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        _, resp = self._aplicar_cambios(producto, request, partial=True)
+        return resp
+
+    def delete(self, request, pk):
+        producto = self._get_producto(request, pk)
+        if not producto:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        nombre_borrado = producto.nombre
+        producto.delete()
+        return Response(
+            {'mensaje': f'Producto "{nombre_borrado}" eliminado correctamente'},
+            status=status.HTTP_200_OK,
+        )
+    
+class ToggleDisponibilidadProductoView(APIView):
+    """
+    PATCH /api/auth/negocio/productos/<id>/disponibilidad/
+    HU06 - atajo dedicado para activar/desactivar un producto.
+    """
+    permission_classes = [IsAuthenticated, EsPropietarioDeNegocio]
+
+    def patch(self, request, pk):
+        try:
+            producto = Producto.objects.get(pk=pk, negocio=request.user.negocio)
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+        anterior = producto.disponible
+        producto.disponible = not producto.disponible
+        producto.save(update_fields=['disponible', 'updated_at'])
+
+        _registrar_cambio(
+            producto, request.user, 'disponible',
+            'Disponible' if anterior else 'No disponible',
+            'Disponible' if producto.disponible else 'No disponible',
+        )
+
+        return Response({
+            'mensaje': (
+                f'Producto "{producto.nombre}" ahora está '
+                f'{"disponible" if producto.disponible else "no disponible"}.'
+            ),
+            'producto': ProductoSerializer(producto).data,
+        })
+
+class ActualizarPrecioProductoView(APIView):
+    """
+    PATCH /api/auth/negocio/productos/<id>/precio/   { "precio": 12.50 }
+    HU06 - atajo dedicado para modificar solo el precio.
+    """
+    permission_classes = [IsAuthenticated, EsPropietarioDeNegocio]
+
+    def patch(self, request, pk):
+        try:
+            producto = Producto.objects.get(pk=pk, negocio=request.user.negocio)
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+        nuevo = request.data.get('precio')
+        if nuevo in (None, ''):
+            return Response({'error': 'El campo "precio" es obligatorio.'}, status=400)
+        try:
+            nuevo_decimal = Decimal(str(nuevo))
+        except (InvalidOperation, TypeError):
+            return Response({'error': 'Precio inválido.'}, status=400)
+        if nuevo_decimal <= 0:
+            return Response({'error': 'El precio debe ser mayor a 0.'}, status=400)
+
+        anterior = producto.precio
+        if anterior == nuevo_decimal:
+            return Response({
+                'mensaje': 'El precio no cambió.',
+                'producto': ProductoSerializer(producto).data,
+            })
+
+        producto.precio = nuevo_decimal
+        producto.save(update_fields=['precio', 'updated_at'])
+
+        _registrar_cambio(
+            producto, request.user, 'precio',
+            f'S/ {anterior}', f'S/ {nuevo_decimal}',
+            comentario=request.data.get('comentario', ''),
+        )
+
+        return Response({
+            'mensaje': f'Precio actualizado: S/ {anterior} → S/ {nuevo_decimal}',
+            'producto': ProductoSerializer(producto).data,
+        })
+
+class HistorialProductoView(APIView):
+    """
+    GET /api/auth/negocio/productos/<id>/historial/
+    HU06 - Devuelve el historial de cambios de un producto.
+    """
+    permission_classes = [IsAuthenticated, EsPropietarioDeNegocio]
+
+    def get(self, request, pk):
+        try:
+            producto = Producto.objects.get(pk=pk, negocio=request.user.negocio)
+        except Producto.DoesNotExist:
+            return Response({'error': 'Producto no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        historial = producto.historial.select_related('usuario').all()
+        return Response(HistorialCambioSerializer(historial, many=True).data)
+
+class HistorialCatalogoView(APIView):
+    """
+    GET /api/auth/negocio/catalogo/historial/?tipo=precio&dias=30
+    HU06 - Historial agregado de TODOS los productos del negocio.
+    """
+    permission_classes = [IsAuthenticated, EsPropietarioDeNegocio]
+
+    def get(self, request):
+        qs = HistorialCambioProducto.objects.select_related(
+            'producto', 'usuario'
+        ).filter(producto__negocio=request.user.negocio)
+
+        tipo = request.query_params.get('tipo')
+        if tipo:
+            qs = qs.filter(tipo_cambio=tipo)
+
+        dias = request.query_params.get('dias')
+        if dias:
+            try:
+                from django.utils import timezone
+                from datetime import timedelta
+                desde = timezone.now() - timedelta(days=int(dias))
+                qs = qs.filter(fecha__gte=desde)
+            except (ValueError, TypeError):
+                pass
+
+        return Response(HistorialCambioSerializer(qs[:500], many=True).data)    
 
 # ──────────────────────────────────────────
 # PEDIDOS
@@ -293,6 +527,172 @@ class ActualizarEstadoPedidoView(APIView):
             return Response({'error': 'Pedido no encontrado o no te pertenece'}, status=status.HTTP_404_NOT_FOUND)
 
 
+class ProductosPublicosView(APIView):
+    """
+    GET /api/auth/negocios/<pk>/productos/
+    Cualquier cliente autenticado puede ver los productos de un negocio.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            negocio = Negocio.objects.get(pk=pk, activo=True)
+        except Negocio.DoesNotExist:
+            return Response({'error': 'Negocio no encontrado'}, status=404)
+
+        productos = Producto.objects.filter(negocio=negocio, disponible=True)
+        return Response(ProductoSerializer(productos, many=True).data)
+    
+
+class ProductosPublicosView(APIView):
+    """
+    GET /api/auth/negocios/<pk>/productos/
+    Cualquier cliente autenticado puede ver los productos de un negocio.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            negocio = Negocio.objects.get(pk=pk, activo=True)
+        except Negocio.DoesNotExist:
+            return Response({'error': 'Negocio no encontrado'}, status=404)
+
+        productos = Producto.objects.filter(negocio=negocio, disponible=True)
+        return Response(ProductoSerializer(productos, many=True).data)
+
+
+# Vista para crear pedidos
+class CrearPedidoView(APIView):
+    """
+    POST /api/auth/pedidos/crear/
+    El cliente envía su carrito y se crean N pedidos (uno por negocio).
+    Body: {
+      "direccion_entrega": "Av. Arequipa 123",
+      "items": [
+        { "producto_id": 1, "cantidad": 2 },
+        { "producto_id": 5, "cantidad": 1 }
+      ]
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        direccion = request.data.get('direccion_entrega', '').strip()
+        items     = request.data.get('items', [])
+
+        if not direccion:
+            return Response({'error': 'La dirección es obligatoria.'}, status=400)
+        if not items:
+            return Response({'error': 'El carrito está vacío.'}, status=400)
+
+        # Agrupar items por negocio
+        grupos: dict = {}
+        for item in items:
+            try:
+                producto = Producto.objects.get(pk=item['producto_id'], disponible=True)
+            except Producto.DoesNotExist:
+                return Response({'error': f'Producto {item["producto_id"]} no disponible.'}, status=400)
+
+            nid = producto.negocio_id
+            if nid not in grupos:
+                grupos[nid] = []
+            grupos[nid].append({
+                'producto': producto,
+                'cantidad': int(item['cantidad'])
+            })
+
+        # Crear un pedido por cada negocio
+        pedidos_creados = []
+        for negocio_id, lineas in grupos.items():
+            total = sum(l['producto'].precio * l['cantidad'] for l in lineas)
+
+            pedido = Pedido.objects.create(
+                cliente=request.user,
+                negocio_id=negocio_id,
+                direccion_entrega=direccion,
+                total=total,
+                estado='pendiente'
+            )
+
+            for l in lineas:
+                DetallePedido.objects.create(
+                    pedido=pedido,
+                    producto=l['producto'],
+                    cantidad=l['cantidad'],
+                    precio_unitario=l['producto'].precio
+                )
+
+            pedidos_creados.append(PedidoSerializer(pedido).data)
+
+        return Response({
+            'mensaje': f'{len(pedidos_creados)} pedido(s) creado(s) correctamente.',
+            'pedidos': pedidos_creados
+        }, status=201)
+
+class CancelarPedidoView(APIView):
+    """
+    PUT /api/auth/pedidos/<id>/cancelar/
+    El cliente cancela su pedido (solo si está en 'pendiente').
+    Body: { "motivo": "..." }  ← opcional
+    """
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, pk):
+        try:
+            pedido = Pedido.objects.get(pk=pk, cliente=request.user)
+        except Pedido.DoesNotExist:
+            return Response({'error': 'Pedido no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if pedido.estado != 'pendiente':
+            return Response(
+                {'error': 'Solo puedes cancelar pedidos en estado pendiente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        motivo = request.data.get('motivo', '').strip()
+        pedido.estado = 'cancelado'
+        pedido.motivo_cancelacion = motivo if motivo else None
+        pedido.save()
+
+        return Response({
+            'mensaje': f'Pedido #{pedido.id} cancelado correctamente.',
+            'pedido': PedidoSerializer(pedido).data
+        })
+
+
+class CompletarPedidoView(APIView):
+    """
+    PUT /api/auth/pedidos/<id>/completar/
+    El comercio marca su pedido como completado (solo si está en 'pendiente').
+    Requiere: ser propietario del negocio al que pertenece el pedido.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, pk):
+        try:
+            negocio = request.user.negocio
+        except Negocio.DoesNotExist:
+            return Response({'error': 'No tienes un negocio registrado.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            pedido = Pedido.objects.get(pk=pk, negocio=negocio)
+        except Pedido.DoesNotExist:
+            return Response({'error': 'Pedido no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if pedido.estado != 'pendiente':
+            return Response(
+                {'error': 'Solo puedes completar pedidos en estado pendiente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pedido.estado = 'completado'
+        pedido.save()
+
+        return Response({
+            'mensaje': f'Pedido #{pedido.id} marcado como completado.',
+            'pedido': PedidoSerializer(pedido).data
+        })
+
 # ──────────────────────────────────────────
 # PERFIL
 # ──────────────────────────────────────────
@@ -321,7 +721,7 @@ class SubirFotoPerfilView(APIView):
             'mensaje': 'Foto actualizada correctamente.',
             'foto': request.build_absolute_uri(user.foto.url)
         })
-
+    
 
 # ──────────────────────────────────────────
 # RECUPERACIÓN DE CONTRASEÑA
