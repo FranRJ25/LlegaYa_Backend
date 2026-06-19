@@ -1,6 +1,7 @@
 """
 Django settings for llegaya_backend project.
 """
+
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -143,6 +144,7 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME':  timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS':  True,
+
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
     'AUTH_HEADER_TYPES': ('Bearer',),
