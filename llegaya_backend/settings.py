@@ -153,6 +153,8 @@ SIMPLE_JWT = {
 # ── CORS ──────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
+    "https://llega-ya-fronted-eosin.vercel.app",
+    "https://llegaya-backend.onrender.com"
 ]
 # Agrega aquí la URL real de tu frontend cuando la tengas, ej:
 # CORS_ALLOWED_ORIGINS.append("https://llegaya-frontend.onrender.com")
