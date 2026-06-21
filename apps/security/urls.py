@@ -10,7 +10,7 @@ from .views import (
     HistorialProductoView, HistorialCatalogoView,
     MisPedidosView, AsignarRepartidorView, ActualizarEstadoPedidoView,
     ProductosPublicosView, CrearPedidoView,
-    CancelarPedidoView, CompletarPedidoView,
+    CancelarPedidoView, CompletarPedidoView, PerfilRepartidorView,
 )
 
 urlpatterns = [
@@ -47,4 +47,6 @@ urlpatterns = [
     path('pedidos/<int:pk>/cancelar/',       CancelarPedidoView.as_view(),         name='cancelar-pedido'),
     path('pedidos/<int:pk>/completar/',      CompletarPedidoView.as_view(),        name='completar-pedido'),
     path('negocios/<int:pk>/productos/', ProductosPublicosView.as_view(), name='productos-publicos'),
+    # Repartidor
+    path('repartidor/perfil/', PerfilRepartidorView.as_view(), name='perfil-repartidor'),
 ]

@@ -1,12 +1,18 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor
 
 
 class RolSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Rol
         fields = ['id', 'nombre']
+
+
+class PerfilRepartidorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = PerfilRepartidor
+        fields = ['id', 'dni', 'vehiculo', 'zona_cobertura', 'disponible', 'created_at']
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -18,20 +24,41 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=6)
-    rol_id   = serializers.PrimaryKeyRelatedField(
-        queryset=Rol.objects.all(), source='rol', write_only=True, required=False
-    )
+    password       = serializers.CharField(write_only=True, min_length=6)
+    rol_nombre     = serializers.CharField(write_only=True, required=False, default='cliente')
+    dni            = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    vehiculo       = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    zona_cobertura = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model  = Usuario
-        fields = ['email', 'nombre', 'apellido', 'telefono', 'password', 'rol_id']
+        fields = ['email', 'nombre', 'apellido', 'telefono', 'password',
+                  'rol_nombre', 'dni', 'vehiculo', 'zona_cobertura']
 
     def create(self, validated_data):
-        password = validated_data.pop('password')
+        password       = validated_data.pop('password')
+        rol_nombre     = validated_data.pop('rol_nombre', 'cliente')
+        dni            = validated_data.pop('dni', '')
+        vehiculo       = validated_data.pop('vehiculo', 'moto')
+        zona_cobertura = validated_data.pop('zona_cobertura', '')
+
         user = Usuario(**validated_data)
         user.set_password(password)
+
+        try:
+            user.rol = Rol.objects.get(nombre=rol_nombre)
+        except Rol.DoesNotExist:
+            user.rol = Rol.objects.get(nombre='cliente')
         user.save()
+
+        if rol_nombre == 'repartidor':
+            PerfilRepartidor.objects.create(
+                usuario        = user,
+                dni            = dni,
+                vehiculo       = vehiculo,
+                zona_cobertura = zona_cobertura,
+            )
+
         return user
 
 
