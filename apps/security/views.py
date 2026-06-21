@@ -11,13 +11,13 @@ from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import os
 
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor
 from .serializers import (
     RegisterSerializer, UsuarioSerializer,
     CustomTokenObtainPairSerializer,
     NegocioSerializer, NegocioCreateSerializer,
     ProductoSerializer, PedidoSerializer,
-    HistorialCambioSerializer
+    HistorialCambioSerializer, PerfilRepartidorSerializer
 )
 from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegocio, EsAdminORepartidor
 
@@ -39,7 +39,7 @@ class LoginView(TokenObtainPairView):
 class RegisterView(APIView):
     """
     POST /api/auth/register/
-    Crea un usuario nuevo. Por defecto se le asigna rol 'cliente'.
+    Crea un usuario nuevo como 'cliente' o 'repartidor'.
     No requiere token.
     """
     permission_classes = [AllowAny]
@@ -48,15 +48,11 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             usuario = serializer.save()
-            # Si no mandaron rol, asignamos 'cliente' por defecto
-            if not usuario.rol:
-                try:
-                    usuario.rol = Rol.objects.get(nombre='cliente')
-                    usuario.save()
-                except Rol.DoesNotExist:
-                    pass
             return Response(
-                {'mensaje': 'Usuario registrado correctamente', 'usuario': UsuarioSerializer(usuario).data},
+                {
+                    'mensaje': 'Usuario registrado correctamente',
+                    'usuario': UsuarioSerializer(usuario).data
+                },
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -92,6 +88,39 @@ class PerfilView(APIView):
 
     def put(self, request):
         serializer = UsuarioSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PerfilRepartidorView(APIView):
+    """
+    GET  /api/auth/repartidor/perfil/  → ver mi perfil de repartidor
+    PUT  /api/auth/repartidor/perfil/  → editar mi perfil de repartidor
+    Requiere: Bearer token + rol repartidor.
+    """
+    permission_classes = [IsAuthenticated, EsRepartidor]
+
+    def get(self, request):
+        try:
+            perfil = request.user.perfil_repartidor
+        except Exception:
+            return Response(
+                {'error': 'Perfil de repartidor no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        return Response(PerfilRepartidorSerializer(perfil).data)
+
+    def put(self, request):
+        try:
+            perfil = request.user.perfil_repartidor
+        except Exception:
+            return Response(
+                {'error': 'Perfil de repartidor no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = PerfilRepartidorSerializer(perfil, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
