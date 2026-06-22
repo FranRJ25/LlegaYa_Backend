@@ -13,16 +13,20 @@ from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import os
 
+<<<<<<< HEAD
 from .cookies import REFRESH_COOKIE_NAME, set_refresh_cookie, delete_refresh_cookie
 
 from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor, Repartidor
+=======
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor
+>>>>>>> 29880a74cf7043d312e8fe4a171f59c67e90355e
 from .serializers import (
     RegisterSerializer, UsuarioSerializer,
     CustomTokenObtainPairSerializer,
     NegocioSerializer, NegocioCreateSerializer,
     ProductoSerializer, PedidoSerializer,
     HistorialCambioSerializer, PerfilRepartidorSerializer,
-    RepartidorSerializer, RegisterRepartidorSerializer,
+    RegisterRepartidorSerializer, RepartidorSerializer
 )
 from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegocio, EsAdminORepartidor
 
@@ -574,12 +578,18 @@ class MisPedidosView(APIView):
     def get(self, request):
         rol = request.user.rol.nombre if request.user.rol else None
 
+        base_qs = Pedido.objects.select_related(
+            'cliente', 'negocio', 'repartidor'
+        ).prefetch_related(
+            'detalles', 'detalles__producto'
+        )
+
         if rol == 'admin':
-            pedidos = Pedido.objects.select_related('cliente', 'negocio', 'repartidor').all()
+            pedidos = base_qs.all()
         elif rol == 'repartidor':
-            pedidos = Pedido.objects.filter(repartidor=request.user)
+            pedidos = base_qs.filter(repartidor=request.user)
         else:
-            pedidos = Pedido.objects.filter(cliente=request.user)
+            pedidos = base_qs.filter(cliente=request.user)
 
         return Response(PedidoSerializer(pedidos, many=True).data)
 
@@ -938,3 +948,69 @@ class PasswordResetConfirmView(APIView):
             {'message': 'Contraseña actualizada correctamente. Ya puedes iniciar sesión.'},
             status=status.HTTP_200_OK
         )
+
+# ──────────────────────────────────────────
+# REPARTIDOR
+# ──────────────────────────────────────────
+
+from .models import PerfilRepartidor
+
+class PedidosDisponiblesView(APIView):
+    """
+    GET /api/auth/pedidos/disponibles/
+    Repartidor ve pedidos en estado 'pendiente' que coincidan con su zona.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            perfil = request.user.perfil_repartidor
+        except PerfilRepartidor.DoesNotExist:
+            return Response({'error': 'No tienes perfil de repartidor.'}, status=403)
+
+        if not perfil.disponible:
+            return Response([])
+
+        zona = perfil.zona_cobertura.lower().strip()
+
+        # Pedidos pendientes cuya dirección contenga alguna palabra de la zona
+        pedidos = Pedido.objects.filter(
+            estado='pendiente',
+            repartidor__isnull=True
+        )
+
+        # Filtrar por coincidencia de zona
+        if zona:
+            palabras = [p.strip() for p in zona.replace(',', ' ').split() if len(p.strip()) > 2]
+            from django.db.models import Q
+            filtro = Q()
+            for palabra in palabras:
+                filtro |= Q(direccion_entrega__icontains=palabra)
+            pedidos = pedidos.filter(filtro)
+
+        return Response(PedidoSerializer(pedidos, many=True).data)
+
+
+class TomarPedidoView(APIView):
+    """
+    POST /api/auth/pedidos/<pk>/tomar/
+    Repartidor acepta un pedido disponible.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            perfil = request.user.perfil_repartidor
+        except PerfilRepartidor.DoesNotExist:
+            return Response({'error': 'No tienes perfil de repartidor.'}, status=403)
+
+        try:
+            pedido = Pedido.objects.get(pk=pk, estado='pendiente', repartidor__isnull=True)
+        except Pedido.DoesNotExist:
+            return Response({'error': 'Pedido no disponible o ya fue tomado.'}, status=404)
+
+        pedido.repartidor = request.user
+        pedido.estado = 'confirmado'
+        pedido.save()
+
+        return Response(PedidoSerializer(pedido).data, status=200)

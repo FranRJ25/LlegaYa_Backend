@@ -1,33 +1,53 @@
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.hashers import make_password
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor, Repartidor
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor
 
-
-class RepartidorSerializer(serializers.ModelSerializer):
-    vehiculo_label = serializers.SerializerMethodField()
-
-    class Meta:
-        model  = Repartidor
-        fields = ['id', 'nombres', 'apellidos', 'email', 'celular', 'dni',
-                  'vehiculo', 'vehiculo_label', 'zona_cobertura', 'activo', 'created_at']
-
-    def get_vehiculo_label(self, obj):
-        return obj.get_vehiculo_display()
-
-
-class RegisterRepartidorSerializer(serializers.ModelSerializer):
+# --- NUEVO SERIALIZADOR PARA REPARTIDOR ---
+class RegisterRepartidorSerializer(serializers.Serializer):
+    nombres = serializers.CharField(max_length=100)
+    apellidos = serializers.CharField(max_length=100)
+    email = serializers.EmailField()
+    celular = serializers.CharField(max_length=20, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=6)
+    
+    dni = serializers.CharField(max_length=8, required=False, allow_blank=True)
+    vehiculo = serializers.ChoiceField(choices=PerfilRepartidor.VEHICULOS, default='moto')
+    zona_cobertura = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
-    class Meta:
-        model  = Repartidor
-        fields = ['nombres', 'apellidos', 'email', 'celular', 'dni',
-                  'vehiculo', 'zona_cobertura', 'password']
+    def validate_email(self, value):
+        if Usuario.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Este correo ya está registrado en el sistema.")
+        return value
 
     def create(self, validated_data):
-        validated_data['password'] = make_password(validated_data['password'])
-        return Repartidor.objects.create(**validated_data)
+        with transaction.atomic():
+            try:
+                # Buscamos el rol por nombre (más seguro que por ID)
+                rol_repartidor = Rol.objects.get(nombre='repartidor')
+            except Rol.DoesNotExist:
+                raise serializers.ValidationError({"rol": "El rol 'repartidor' no existe en la BD."})
 
+            usuario = Usuario.objects.create_user(
+                email=validated_data['email'],
+                password=validated_data['password'],
+                nombre=validated_data['nombres'],
+                apellido=validated_data['apellidos'],
+                telefono=validated_data.get('celular', ''),
+                rol=rol_repartidor
+            )
+
+            PerfilRepartidor.objects.create(
+                usuario=usuario,
+                dni=validated_data.get('dni', ''),
+                vehiculo=validated_data.get('vehiculo', 'moto'),
+                zona_cobertura=validated_data.get('zona_cobertura', '')
+            )
+        return usuario
+
+
+# --- EL RESTO DE TUS SERIALIZADORES (INTACTOS) ---
 
 class RolSerializer(serializers.ModelSerializer):
     class Meta:
@@ -213,3 +233,14 @@ class PedidoSerializer(serializers.ModelSerializer):
             'direccion': n.direccion,
             'telefono':  n.telefono,
         }
+    
+class RepartidorSerializer(serializers.ModelSerializer):
+    perfil_repartidor = PerfilRepartidorSerializer(read_only=True)
+    rol = RolSerializer(read_only=True)
+
+    class Meta:
+        model = Usuario
+        fields = [
+            'id', 'email', 'nombre', 'apellido', 'telefono',
+            'rol', 'activo', 'created_at', 'perfil_repartidor'
+        ]

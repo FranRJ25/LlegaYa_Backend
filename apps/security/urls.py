@@ -10,7 +10,11 @@ from .views import (
     MisPedidosView, AsignarRepartidorView, ActualizarEstadoPedidoView,
     ProductosPublicosView, CrearPedidoView,
     CancelarPedidoView, CompletarPedidoView, PerfilRepartidorView,
+<<<<<<< HEAD
     RegisterRepartidorView, CookieTokenRefreshView,
+=======
+    RegisterRepartidorView, PedidosDisponiblesView, TomarPedidoView
+>>>>>>> 29880a74cf7043d312e8fe4a171f59c67e90355e
 )
 
 urlpatterns = [
@@ -48,6 +52,8 @@ urlpatterns = [
     path('pedidos/<int:pk>/completar/',      CompletarPedidoView.as_view(),        name='completar-pedido'),
     path('negocios/<int:pk>/productos/', ProductosPublicosView.as_view(), name='productos-publicos'),
     # Repartidor
+    path('pedidos/disponibles/', PedidosDisponiblesView.as_view(), name='pedidos-disponibles'),
+    path('pedidos/<int:pk>/tomar/', TomarPedidoView.as_view(), name='tomar-pedido'),
     path('repartidor/perfil/',    PerfilRepartidorView.as_view(),    name='perfil-repartidor'),
     path('repartidor/register/',  RegisterRepartidorView.as_view(),  name='register-repartidor'),
 ]
