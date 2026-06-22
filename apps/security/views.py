@@ -11,14 +11,14 @@ from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import os
 
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor, Repartidor
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor
 from .serializers import (
     RegisterSerializer, UsuarioSerializer,
     CustomTokenObtainPairSerializer,
     NegocioSerializer, NegocioCreateSerializer,
     ProductoSerializer, PedidoSerializer,
     HistorialCambioSerializer, PerfilRepartidorSerializer,
-    RepartidorSerializer, RegisterRepartidorSerializer,
+    RegisterRepartidorSerializer, RepartidorSerializer
 )
 from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegocio, EsAdminORepartidor
 
@@ -887,3 +887,58 @@ class PasswordResetConfirmView(APIView):
             {'message': 'Contraseña actualizada correctamente. Ya puedes iniciar sesión.'},
             status=status.HTTP_200_OK
         )
+
+# ──────────────────────────────────────────
+# REPARTIDOR
+# ──────────────────────────────────────────
+
+from .models import PerfilRepartidor
+
+class PedidosDisponiblesView(APIView):
+    """
+    GET /api/auth/pedidos/disponibles/
+    Lista pedidos confirmados sin repartidor, filtrados por la zona del repartidor.
+    """
+    permission_classes = [IsAuthenticated, EsRepartidor]
+
+    def get(self, request):
+        pedidos = Pedido.objects.filter(
+            estado='confirmado',
+            repartidor__isnull=True
+        ).select_related('cliente', 'negocio')
+
+        try:
+            zona = request.user.perfil_repartidor.zona_cobertura
+        except PerfilRepartidor.DoesNotExist:
+            zona = None
+
+        if zona:
+            pedidos = pedidos.filter(direccion_entrega__icontains=zona)
+
+        return Response(PedidoSerializer(pedidos, many=True).data)
+
+
+class TomarPedidoView(APIView):
+    """
+    POST /api/auth/pedidos/<id>/tomar/
+    El repartidor se autoasigna un pedido. Pasa directo a 'en_camino'.
+    """
+    permission_classes = [IsAuthenticated, EsRepartidor]
+
+    def post(self, request, pk):
+        try:
+            pedido = Pedido.objects.get(pk=pk, estado='confirmado', repartidor__isnull=True)
+        except Pedido.DoesNotExist:
+            return Response(
+                {'error': 'Este pedido ya no está disponible.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        pedido.repartidor = request.user
+        pedido.estado     = 'en_camino'
+        pedido.save()
+
+        return Response({
+            'mensaje': f'Pedido #{pedido.id} asignado a ti.',
+            'pedido':  PedidoSerializer(pedido).data
+        })
