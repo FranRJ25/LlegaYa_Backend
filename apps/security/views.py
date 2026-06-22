@@ -5,11 +5,15 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.mail import send_mail
 from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import os
+
+from .cookies import REFRESH_COOKIE_NAME, set_refresh_cookie, delete_refresh_cookie
 
 from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor, Repartidor
 from .serializers import (
@@ -49,14 +53,57 @@ class RegisterRepartidorView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class CookieTokenRefreshView(APIView):
+    """
+    POST /api/auth/token/refresh/
+    Lee el refresh_token desde la cookie HttpOnly, devuelve {access}.
+    No requiere cabecera Authorization.
+    """
+    permission_classes     = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        raw = request.COOKIES.get(REFRESH_COOKIE_NAME)
+        if not raw:
+            return Response({'detail': 'No hay refresh token'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TokenRefreshSerializer(data={'refresh': raw})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except (TokenError, InvalidToken):
+            resp = Response({'detail': 'Refresh inválido o expirado'}, status=status.HTTP_401_UNAUTHORIZED)
+            delete_refresh_cookie(resp)
+            return resp
+
+        data = serializer.validated_data        # {'access': ...} y 'refresh' si hay rotación
+        resp = Response({'access': data['access']}, status=status.HTTP_200_OK)
+        if 'refresh' in data:                   # rotación activa: renueva la cookie
+            set_refresh_cookie(resp, data['refresh'])
+        return resp
+
+
 class LoginView(TokenObtainPairView):
     """
     POST /api/auth/login/
-    Devuelve access token, refresh token y datos del usuario.
-    No requiere token (es el endpoint para obtenerlo).
+    Devuelve {access, usuario}. El refresh_token va SOLO en cookie HttpOnly.
     """
-    serializer_class   = CustomTokenObtainPairSerializer
-    permission_classes = [AllowAny]
+    serializer_class       = CustomTokenObtainPairSerializer
+    permission_classes     = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
+
+        data    = serializer.validated_data          # {access, refresh, usuario}
+        refresh = data.pop('refresh')                # saca refresh del body
+
+        resp = Response(data, status=status.HTTP_200_OK)   # devuelve {access, usuario}
+        set_refresh_cookie(resp, refresh)
+        return resp
 
 
 class RegisterView(APIView):
@@ -84,18 +131,22 @@ class RegisterView(APIView):
 class LogoutView(APIView):
     """
     POST /api/auth/logout/
-    Invalida el refresh token.
-    Requiere: estar autenticado.
+    Lee el refresh_token desde la cookie, lo invalida (blacklist) y borra la cookie.
+    No requiere cabecera Authorization.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes     = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
-        try:
-            token = RefreshToken(request.data.get('refresh'))
-            token.blacklist()
-            return Response({'mensaje': 'Sesión cerrada correctamente'})
-        except Exception:
-            return Response({'error': 'Token inválido'}, status=status.HTTP_400_BAD_REQUEST)
+        raw  = request.COOKIES.get(REFRESH_COOKIE_NAME)
+        resp = Response({'detail': 'Sesión cerrada correctamente'}, status=status.HTTP_200_OK)
+        if raw:
+            try:
+                RefreshToken(raw).blacklist()
+            except Exception:
+                pass
+        delete_refresh_cookie(resp)
+        return resp
 
 
 class PerfilView(APIView):

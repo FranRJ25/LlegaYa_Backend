@@ -1,5 +1,4 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     LoginView, RegisterView, LogoutView, PerfilView, SubirFotoPerfilView,
     PasswordResetRequestView, PasswordResetConfirmView,
@@ -11,15 +10,15 @@ from .views import (
     MisPedidosView, AsignarRepartidorView, ActualizarEstadoPedidoView,
     ProductosPublicosView, CrearPedidoView,
     CancelarPedidoView, CompletarPedidoView, PerfilRepartidorView,
-    RegisterRepartidorView,
+    RegisterRepartidorView, CookieTokenRefreshView,
 )
 
 urlpatterns = [
     # Auth 
-    path('login/',    LoginView.as_view(),    name='login'),
-    path('register/', RegisterView.as_view(), name='register'),
-    path('refresh/',  TokenRefreshView.as_view(), name='token_refresh'),
-    path('logout/',   LogoutView.as_view(),   name='logout'),
+    path('login/',          LoginView.as_view(),             name='login'),
+    path('register/',       RegisterView.as_view(),          name='register'),
+    path('token/refresh/',  CookieTokenRefreshView.as_view(), name='token_refresh'),
+    path('logout/',         LogoutView.as_view(),            name='logout'),
     # Perfil 
     path('perfil/',      PerfilView.as_view(),          name='perfil'),
     path('perfil/foto/', SubirFotoPerfilView.as_view(), name='subir-foto-perfil'),

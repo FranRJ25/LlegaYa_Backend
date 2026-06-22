@@ -151,6 +151,20 @@ SIMPLE_JWT = {
 }
 
 # ── CORS ──────────────────────────────────────────────────
+CORS_ALLOW_CREDENTIALS = True   # necesario para que el browser envíe/reciba cookies cross-origin
+
+CORS_ALLOW_HEADERS = [          # explícito para que el frontend pueda enviar Authorization + Content-Type
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "https://llega-ya-fronted-eosin.vercel.app",
