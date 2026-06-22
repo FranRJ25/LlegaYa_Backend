@@ -213,6 +213,31 @@ class PasswordResetToken(models.Model):
     def __str__(self):
         return f"Token de {self.user.email} — {'válido' if self.is_valid() else 'expirado'}"
 
+class Repartidor(models.Model):
+    VEHICULOS = [
+        ('moto',      'Moto'),
+        ('bicicleta', 'Bicicleta'),
+        ('a_pie',     'A pie'),
+        ('auto',      'Auto'),
+    ]
+    nombres        = models.CharField(max_length=100)
+    apellidos      = models.CharField(max_length=100)
+    email          = models.EmailField(unique=True)
+    celular        = models.CharField(max_length=15, blank=True)
+    dni            = models.CharField(max_length=8, blank=True)
+    vehiculo       = models.CharField(max_length=20, choices=VEHICULOS, default='moto')
+    zona_cobertura = models.CharField(max_length=255, blank=True)
+    password       = models.CharField(max_length=255)
+    activo         = models.BooleanField(default=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'repartidor'
+
+    def __str__(self):
+        return f'{self.nombres} {self.apellidos} — {self.vehiculo}'
+
+
 class PerfilRepartidor(models.Model):
     VEHICULOS = [
         ('moto',      'Moto'),

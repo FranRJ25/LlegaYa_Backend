@@ -11,13 +11,14 @@ from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import os
 
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor, Repartidor
 from .serializers import (
     RegisterSerializer, UsuarioSerializer,
     CustomTokenObtainPairSerializer,
     NegocioSerializer, NegocioCreateSerializer,
     ProductoSerializer, PedidoSerializer,
-    HistorialCambioSerializer, PerfilRepartidorSerializer
+    HistorialCambioSerializer, PerfilRepartidorSerializer,
+    RepartidorSerializer, RegisterRepartidorSerializer,
 )
 from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegocio, EsAdminORepartidor
 
@@ -25,6 +26,28 @@ from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegoci
 # ──────────────────────────────────────────
 # AUTENTICACIÓN
 # ──────────────────────────────────────────
+
+class RegisterRepartidorView(APIView):
+    """
+    POST /api/auth/repartidor/register/
+    Registra un nuevo repartidor en su propia tabla (sin vincularse a Usuario).
+    No requiere token.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterRepartidorSerializer(data=request.data)
+        if serializer.is_valid():
+            repartidor = serializer.save()
+            return Response(
+                {
+                    'mensaje': 'Repartidor registrado correctamente',
+                    'repartidor': RepartidorSerializer(repartidor).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class LoginView(TokenObtainPairView):
     """

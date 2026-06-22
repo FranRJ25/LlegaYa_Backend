@@ -1,6 +1,32 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor
+from django.contrib.auth.hashers import make_password
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor, Repartidor
+
+
+class RepartidorSerializer(serializers.ModelSerializer):
+    vehiculo_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Repartidor
+        fields = ['id', 'nombres', 'apellidos', 'email', 'celular', 'dni',
+                  'vehiculo', 'vehiculo_label', 'zona_cobertura', 'activo', 'created_at']
+
+    def get_vehiculo_label(self, obj):
+        return obj.get_vehiculo_display()
+
+
+class RegisterRepartidorSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=6)
+
+    class Meta:
+        model  = Repartidor
+        fields = ['nombres', 'apellidos', 'email', 'celular', 'dni',
+                  'vehiculo', 'zona_cobertura', 'password']
+
+    def create(self, validated_data):
+        validated_data['password'] = make_password(validated_data['password'])
+        return Repartidor.objects.create(**validated_data)
 
 
 class RolSerializer(serializers.ModelSerializer):
