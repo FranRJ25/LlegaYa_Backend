@@ -523,12 +523,18 @@ class MisPedidosView(APIView):
     def get(self, request):
         rol = request.user.rol.nombre if request.user.rol else None
 
+        base_qs = Pedido.objects.select_related(
+            'cliente', 'negocio', 'repartidor'
+        ).prefetch_related(
+            'detalles', 'detalles__producto'
+        )
+
         if rol == 'admin':
-            pedidos = Pedido.objects.select_related('cliente', 'negocio', 'repartidor').all()
+            pedidos = base_qs.all()
         elif rol == 'repartidor':
-            pedidos = Pedido.objects.filter(repartidor=request.user)
+            pedidos = base_qs.filter(repartidor=request.user)
         else:
-            pedidos = Pedido.objects.filter(cliente=request.user)
+            pedidos = base_qs.filter(cliente=request.user)
 
         return Response(PedidoSerializer(pedidos, many=True).data)
 
@@ -897,48 +903,59 @@ from .models import PerfilRepartidor
 class PedidosDisponiblesView(APIView):
     """
     GET /api/auth/pedidos/disponibles/
-    Lista pedidos confirmados sin repartidor, filtrados por la zona del repartidor.
+    Repartidor ve pedidos en estado 'pendiente' que coincidan con su zona.
     """
-    permission_classes = [IsAuthenticated, EsRepartidor]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        pedidos = Pedido.objects.filter(
-            estado='confirmado',
-            repartidor__isnull=True
-        ).select_related('cliente', 'negocio')
-
         try:
-            zona = request.user.perfil_repartidor.zona_cobertura
+            perfil = request.user.perfil_repartidor
         except PerfilRepartidor.DoesNotExist:
-            zona = None
+            return Response({'error': 'No tienes perfil de repartidor.'}, status=403)
 
+        if not perfil.disponible:
+            return Response([])
+
+        zona = perfil.zona_cobertura.lower().strip()
+
+        # Pedidos pendientes cuya dirección contenga alguna palabra de la zona
+        pedidos = Pedido.objects.filter(
+            estado='pendiente',
+            repartidor__isnull=True
+        )
+
+        # Filtrar por coincidencia de zona
         if zona:
-            pedidos = pedidos.filter(direccion_entrega__icontains=zona)
+            palabras = [p.strip() for p in zona.replace(',', ' ').split() if len(p.strip()) > 2]
+            from django.db.models import Q
+            filtro = Q()
+            for palabra in palabras:
+                filtro |= Q(direccion_entrega__icontains=palabra)
+            pedidos = pedidos.filter(filtro)
 
         return Response(PedidoSerializer(pedidos, many=True).data)
 
 
 class TomarPedidoView(APIView):
     """
-    POST /api/auth/pedidos/<id>/tomar/
-    El repartidor se autoasigna un pedido. Pasa directo a 'en_camino'.
+    POST /api/auth/pedidos/<pk>/tomar/
+    Repartidor acepta un pedido disponible.
     """
-    permission_classes = [IsAuthenticated, EsRepartidor]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
         try:
-            pedido = Pedido.objects.get(pk=pk, estado='confirmado', repartidor__isnull=True)
+            perfil = request.user.perfil_repartidor
+        except PerfilRepartidor.DoesNotExist:
+            return Response({'error': 'No tienes perfil de repartidor.'}, status=403)
+
+        try:
+            pedido = Pedido.objects.get(pk=pk, estado='pendiente', repartidor__isnull=True)
         except Pedido.DoesNotExist:
-            return Response(
-                {'error': 'Este pedido ya no está disponible.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Pedido no disponible o ya fue tomado.'}, status=404)
 
         pedido.repartidor = request.user
-        pedido.estado     = 'en_camino'
+        pedido.estado = 'confirmado'
         pedido.save()
 
-        return Response({
-            'mensaje': f'Pedido #{pedido.id} asignado a ti.',
-            'pedido':  PedidoSerializer(pedido).data
-        })
+        return Response(PedidoSerializer(pedido).data, status=200)
