@@ -2,7 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.hashers import make_password
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor, Pago
 
 # --- NUEVO SERIALIZADOR PARA REPARTIDOR ---
 class RegisterRepartidorSerializer(serializers.Serializer):
@@ -196,6 +196,14 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
         model  = DetallePedido
         fields = ['id', 'producto', 'cantidad', 'precio_unitario']
 
+class PagoSerializer(serializers.ModelSerializer):
+    numero_transaccion = serializers.UUIDField(read_only=True)
+    fecha              = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model  = Pago
+        fields = ['id', 'pedido', 'monto', 'metodo', 'numero_transaccion', 'fecha']
+        read_only_fields = ['numero_transaccion', 'fecha']        
 
 class PedidoSerializer(serializers.ModelSerializer):
     detalles      = DetallePedidoSerializer(many=True, read_only=True)
@@ -233,6 +241,18 @@ class PedidoSerializer(serializers.ModelSerializer):
             'direccion': n.direccion,
             'telefono':  n.telefono,
         }
+    
+class PedidoConPagoSerializer(PedidoSerializer):
+    pago = serializers.SerializerMethodField()
+
+    class Meta(PedidoSerializer.Meta):
+        fields = PedidoSerializer.Meta.fields + ['pago']
+
+    def get_pago(self, obj):
+        try:
+            return PagoSerializer(obj.pago).data
+        except Pago.DoesNotExist:
+            return None    
     
 class RepartidorSerializer(serializers.ModelSerializer):
     perfil_repartidor = PerfilRepartidorSerializer(read_only=True)
