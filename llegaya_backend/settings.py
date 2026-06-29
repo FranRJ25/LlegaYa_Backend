@@ -192,3 +192,19 @@ DEFAULT_FROM_EMAIL  = f'LlegaYa <{os.environ.get("EMAIL_HOST_USER", "")}>'
 # URL del frontend para construir links (reset password, etc.)
 # En local usa localhost, en Render usa la variable de entorno.
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:4200')
+
+import sys
+
+if 'test' in sys.argv:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+
+import sys
+if 'test' in sys.argv:
+    MIGRATION_MODULES = {
+        'security': None,
+    }

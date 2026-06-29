@@ -213,6 +213,23 @@ class PasswordResetToken(models.Model):
     def __str__(self):
         return f"Token de {self.user.email} — {'válido' if self.is_valid() else 'expirado'}"
 
+class Pago(models.Model):
+    METODOS = [
+        ('tarjeta', 'Tarjeta de crédito/débito'),
+        ('yape',    'Yape'),
+        ('plin',    'Plin'),
+    ]
+    pedido             = models.OneToOneField(Pedido, on_delete=models.CASCADE, related_name='pago')
+    monto              = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo             = models.CharField(max_length=20, choices=METODOS, default='tarjeta')
+    numero_transaccion = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    fecha              = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'pago'
+
+    def __str__(self):
+        return f'Pago #{self.numero_transaccion} — Pedido #{self.pedido.id}'
 
 class PerfilRepartidor(models.Model):
     VEHICULOS = [

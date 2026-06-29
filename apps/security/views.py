@@ -13,20 +13,16 @@ from django.conf import settings
 from decimal import Decimal, InvalidOperation
 import os
 
-<<<<<<< HEAD
 from .cookies import REFRESH_COOKIE_NAME, set_refresh_cookie, delete_refresh_cookie
 
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor, Repartidor
-=======
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor
->>>>>>> 29880a74cf7043d312e8fe4a171f59c67e90355e
+from .models import Usuario, Rol, Negocio, Producto, Pedido,DetallePedido, PasswordResetToken, HistorialCambioProducto, PerfilRepartidor, Pago
 from .serializers import (
     RegisterSerializer, UsuarioSerializer,
     CustomTokenObtainPairSerializer,
     NegocioSerializer, NegocioCreateSerializer,
     ProductoSerializer, PedidoSerializer,
     HistorialCambioSerializer, PerfilRepartidorSerializer,
-    RegisterRepartidorSerializer, RepartidorSerializer
+    RegisterRepartidorSerializer, RepartidorSerializer, PagoSerializer, PedidoConPagoSerializer
 )
 from .permissions import EsAdmin, EsCliente, EsRepartidor, EsPropietarioDeNegocio, EsAdminORepartidor
 
@@ -591,7 +587,7 @@ class MisPedidosView(APIView):
         else:
             pedidos = base_qs.filter(cliente=request.user)
 
-        return Response(PedidoSerializer(pedidos, many=True).data)
+        return Response(PedidoConPagoSerializer(pedidos, many=True).data)
 
 
 class AsignarRepartidorView(APIView):
@@ -805,6 +801,55 @@ class CompletarPedidoView(APIView):
             'mensaje': f'Pedido #{pedido.id} marcado como completado.',
             'pedido': PedidoSerializer(pedido).data
         })
+    
+class PagarPedidoView(APIView):
+    """
+    POST /api/auth/pedidos/<pk>/pagar/
+    El cliente paga su pedido. Crea el registro en Pago (1 a 1 con Pedido).
+    Body: { "metodo": "yape" }   # tarjeta | yape | plin
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            pedido = Pedido.objects.get(pk=pk, cliente=request.user)
+        except Pedido.DoesNotExist:
+            return Response({'error': 'Pedido no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if hasattr(pedido, 'pago'):
+            return Response({'error': 'Este pedido ya fue pagado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        metodo = request.data.get('metodo', 'tarjeta')
+        if metodo not in dict(Pago.METODOS):
+            return Response({'error': 'Método de pago inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        pago = Pago.objects.create(
+            pedido=pedido,
+            monto=pedido.total,
+            metodo=metodo,
+        )
+
+        return Response({
+            'mensaje': 'Pago registrado correctamente.',
+            'pedido': PedidoConPagoSerializer(pedido).data
+        }, status=status.HTTP_201_CREATED)
+
+class DetallePedidoConPagoView(APIView):
+    """
+    GET /api/auth/pedidos/<pk>/detalle/
+    Devuelve el pedido con su pago (si existe) — para la "boletita".
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            pedido = Pedido.objects.select_related('negocio', 'cliente', 'repartidor') \
+                                    .prefetch_related('detalles__producto') \
+                                    .get(pk=pk, cliente=request.user)
+        except Pedido.DoesNotExist:
+            return Response({'error': 'Pedido no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(PedidoConPagoSerializer(pedido).data)
 
 # ──────────────────────────────────────────
 # PERFIL

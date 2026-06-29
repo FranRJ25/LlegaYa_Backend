@@ -6,16 +6,22 @@ REFRESH_COOKIE_PATH = '/api/auth/token/refresh/'   # el browser solo envía la c
 
 def set_refresh_cookie(response, refresh_token):
     max_age = int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds())
+    is_prod = not settings.DEBUG
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=str(refresh_token),
         httponly=True,
-        secure=not settings.DEBUG,  # False en dev HTTP, True en prod HTTPS
-        samesite='Lax',             # dev con proxy = mismo origen; prod cross-site: 'None' + secure=True
+        secure=is_prod,
+        samesite='None' if is_prod else 'Lax',
         path=REFRESH_COOKIE_PATH,
         max_age=max_age,
     )
 
 
 def delete_refresh_cookie(response):
-    response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH, samesite='Lax')
+    is_prod = not settings.DEBUG
+    response.delete_cookie(
+        REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
+        samesite='None' if is_prod else 'Lax',
+    )
