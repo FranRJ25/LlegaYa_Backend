@@ -2,17 +2,16 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.hashers import make_password
-from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor
+from .validators import validar_solo_letras, validar_telefono_peruano, validar_dni, validar_password, validar_ruc, validar_descripcion, validar_direccion
+from .models import Usuario, Rol, Negocio, Producto, Pedido, DetallePedido, HistorialCambioProducto, PerfilRepartidor, Pago
 
-# --- NUEVO SERIALIZADOR PARA REPARTIDOR ---
 class RegisterRepartidorSerializer(serializers.Serializer):
-    nombres = serializers.CharField(max_length=100)
-    apellidos = serializers.CharField(max_length=100)
+    nombres = serializers.CharField(max_length=100, validators=[validar_solo_letras])
+    apellidos = serializers.CharField(max_length=100, validators=[validar_solo_letras])
     email = serializers.EmailField()
-    celular = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    password = serializers.CharField(write_only=True, min_length=6)
-    
-    dni = serializers.CharField(max_length=8, required=False, allow_blank=True)
+    telefono = serializers.CharField(max_length=20, required=False, allow_blank=True, validators=[validar_telefono_peruano])
+    password = serializers.CharField(write_only=True, min_length=6, validators=[validar_password])
+    dni = serializers.CharField(max_length=8, required=False, allow_blank=True, validators=[validar_dni])
     vehiculo = serializers.ChoiceField(choices=PerfilRepartidor.VEHICULOS, default='moto')
     zona_cobertura = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
@@ -24,7 +23,6 @@ class RegisterRepartidorSerializer(serializers.Serializer):
     def create(self, validated_data):
         with transaction.atomic():
             try:
-                # Buscamos el rol por nombre (más seguro que por ID)
                 rol_repartidor = Rol.objects.get(nombre='repartidor')
             except Rol.DoesNotExist:
                 raise serializers.ValidationError({"rol": "El rol 'repartidor' no existe en la BD."})
@@ -34,7 +32,7 @@ class RegisterRepartidorSerializer(serializers.Serializer):
                 password=validated_data['password'],
                 nombre=validated_data['nombres'],
                 apellido=validated_data['apellidos'],
-                telefono=validated_data.get('celular', ''),
+                telefono=validated_data.get('telefono', ''),
                 rol=rol_repartidor
             )
 
@@ -45,9 +43,6 @@ class RegisterRepartidorSerializer(serializers.Serializer):
                 zona_cobertura=validated_data.get('zona_cobertura', '')
             )
         return usuario
-
-
-# --- EL RESTO DE TUS SERIALIZADORES (INTACTOS) ---
 
 class RolSerializer(serializers.ModelSerializer):
     class Meta:
@@ -70,23 +65,26 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password       = serializers.CharField(write_only=True, min_length=6)
-    rol_nombre     = serializers.CharField(write_only=True, required=False, default='cliente')
-    dni            = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    vehiculo       = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    zona_cobertura = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    password   = serializers.CharField(write_only=True, min_length=6, max_length=35, validators=[validar_password])
+    rol_nombre = serializers.CharField(write_only=True, required=False, default='cliente')
+    nombre     = serializers.CharField(max_length=100, validators=[validar_solo_letras])
+    apellido   = serializers.CharField(max_length=100, validators=[validar_solo_letras])
+    email      = serializers.EmailField(max_length=254)
+    telefono   = serializers.CharField(required=False, allow_blank=True, validators=[validar_telefono_peruano])
 
     class Meta:
         model  = Usuario
         fields = ['email', 'nombre', 'apellido', 'telefono', 'password',
-                  'rol_nombre', 'dni', 'vehiculo', 'zona_cobertura']
+                  'rol_nombre']
+        
+    def validate_email(self, value):  # ← esto faltaba
+        if Usuario.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Este correo ya está registrado.")
+        return value
 
     def create(self, validated_data):
-        password       = validated_data.pop('password')
-        rol_nombre     = validated_data.pop('rol_nombre', 'cliente')
-        dni            = validated_data.pop('dni', '')
-        vehiculo       = validated_data.pop('vehiculo', 'moto')
-        zona_cobertura = validated_data.pop('zona_cobertura', '')
+        password   = validated_data.pop('password')
+        rol_nombre = validated_data.pop('rol_nombre', 'cliente')
 
         user = Usuario(**validated_data)
         user.set_password(password)
@@ -96,14 +94,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         except Rol.DoesNotExist:
             user.rol = Rol.objects.get(nombre='cliente')
         user.save()
-
-        if rol_nombre == 'repartidor':
-            PerfilRepartidor.objects.create(
-                usuario        = user,
-                dni            = dni,
-                vehiculo       = vehiculo,
-                zona_cobertura = zona_cobertura,
-            )
 
         return user
 
@@ -143,6 +133,27 @@ class NegocioSerializer(serializers.ModelSerializer):
 
 
 class NegocioCreateSerializer(serializers.ModelSerializer):
+    ruc          = serializers.CharField(max_length=11, required=False, allow_blank=True)
+    razon_social = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    nombre       = serializers.CharField(max_length=150)
+    descripcion  = serializers.CharField(required=False, allow_blank=True)
+    telefono     = serializers.CharField(max_length=9, required=False, allow_blank=True)
+    direccion    = serializers.CharField(max_length=255)
+
+    def validate_ruc(self, value):
+        return validar_ruc(value)
+
+    def validate_descripcion(self, value):
+        if not value:
+            return value
+        return validar_descripcion(value)
+
+    def validate_telefono(self, value):
+        return validar_telefono_peruano(value)
+
+    def validate_direccion(self, value):
+        return validar_direccion(value)
+
     class Meta:
         model  = Negocio
         fields = [
@@ -150,9 +161,6 @@ class NegocioCreateSerializer(serializers.ModelSerializer):
             'ruc', 'razon_social', 'telefono',
             'hora_apertura', 'hora_cierre', 'dias_atencion',
         ]
-
-    def create(self, validated_data):
-        return Negocio.objects.create(**validated_data)
 
 
 class ProductoSerializer(serializers.ModelSerializer):
@@ -196,6 +204,14 @@ class DetallePedidoSerializer(serializers.ModelSerializer):
         model  = DetallePedido
         fields = ['id', 'producto', 'cantidad', 'precio_unitario']
 
+class PagoSerializer(serializers.ModelSerializer):
+    numero_transaccion = serializers.UUIDField(read_only=True)
+    fecha              = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model  = Pago
+        fields = ['id', 'pedido', 'monto', 'metodo', 'numero_transaccion', 'fecha']
+        read_only_fields = ['numero_transaccion', 'fecha']        
 
 class PedidoSerializer(serializers.ModelSerializer):
     detalles      = DetallePedidoSerializer(many=True, read_only=True)
@@ -233,6 +249,18 @@ class PedidoSerializer(serializers.ModelSerializer):
             'direccion': n.direccion,
             'telefono':  n.telefono,
         }
+    
+class PedidoConPagoSerializer(PedidoSerializer):
+    pago = serializers.SerializerMethodField()
+
+    class Meta(PedidoSerializer.Meta):
+        fields = PedidoSerializer.Meta.fields + ['pago']
+
+    def get_pago(self, obj):
+        try:
+            return PagoSerializer(obj.pago).data
+        except Pago.DoesNotExist:
+            return None    
     
 class RepartidorSerializer(serializers.ModelSerializer):
     perfil_repartidor = PerfilRepartidorSerializer(read_only=True)
