@@ -17,3 +17,14 @@ def obtener_producto(producto_id: int, auth_header: str | None) -> dict | None:
     except requests.RequestException:
         pass
     return None
+
+
+def obtener_negocio(negocio_id: int, auth_header: str | None) -> dict | None:
+    headers = {"Authorization": auth_header} if auth_header else None
+    try:
+        resp = llamar("GET", f"/api/negocios/{negocio_id}/", headers=headers)
+        if resp.status_code == 200:
+            return resp.json()
+    except requests.RequestException:
+        pass
+    return None

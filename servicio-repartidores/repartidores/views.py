@@ -105,3 +105,27 @@ class TomarPedidoView(APIView):
             return Response({"detail": "servicio-pedidos no disponible"}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(resp.json(), status=resp.status_code)
+
+
+class PromedioCalificacionesRepartidorView(APIView):
+    """GET /api/repartidores/calificaciones/promedio/
+    Devuelve { promedio, total } de las calificaciones recibidas por el
+    repartidor autenticado. Delega el calculo a servicio-pedidos, que es
+    quien tiene los datos de calificaciones."""
+
+    permission_classes = [EsRepartidor]
+
+    def get(self, request):
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        headers = {"Authorization": auth_header} if auth_header else None
+        try:
+            resp = llamar(
+                "GET",
+                "/api/pedidos/calificaciones/promedio/",
+                headers=headers,
+                params={"repartidor_id": request.user.id},
+            )
+        except Exception:
+            return Response({"detail": "servicio-pedidos no disponible"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(resp.json(), status=resp.status_code)

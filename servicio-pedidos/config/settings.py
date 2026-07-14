@@ -1,5 +1,6 @@
 import os
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -103,6 +104,9 @@ CORS_ALLOWED_ORIGINS = [
 
 # API Gateway (unico punto de entrada para llamadas entre microservicios)
 API_GATEWAY_URL = os.environ.get("API_GATEWAY_URL", "http://api-gateway:8080")
+
+# HU14 - comision fija de plataforma que corresponde al repartidor por cada pago
+REPARTIDOR_COMISION_PORCENTAJE = Decimal(os.environ.get("REPARTIDOR_COMISION_PORCENTAJE", "10.00"))
 
 if "test" in sys.argv:
     DATABASES["default"] = {

@@ -1,3 +1,6 @@
+import uuid
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -36,3 +39,75 @@ class DetallePedido(models.Model):
 
     class Meta:
         db_table = "detalle_pedido"
+
+
+class Pago(models.Model):
+    METODOS = [
+        ("tarjeta", "Tarjeta de credito/debito"),
+        ("yape", "Yape"),
+        ("plin", "Plin"),
+    ]
+
+    pedido = models.OneToOneField(Pedido, on_delete=models.CASCADE, related_name="pago")
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo = models.CharField(max_length=20, choices=METODOS, default="tarjeta")
+    numero_transaccion = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    comision_plataforma = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    monto_comercio = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    monto_repartidor = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+
+    class Meta:
+        db_table = "pago"
+
+    def __str__(self):
+        return f"Pago #{self.numero_transaccion} - Pedido #{self.pedido_id}"
+
+
+class Calificacion(models.Model):
+    pedido = models.OneToOneField(Pedido, on_delete=models.CASCADE, related_name="calificacion")
+    repartidor_id = models.BigIntegerField()
+    estrellas = models.PositiveSmallIntegerField()
+    comentario = models.TextField(blank=True, default="")
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "calificacion"
+
+    def __str__(self):
+        return f"Calificacion #{self.id} - Pedido #{self.pedido_id} - {self.estrellas} estrellas"
+
+
+class Incidencia(models.Model):
+    TIPOS = [
+        ("pedido_no_llego", "El pedido no llego"),
+        ("pedido_incompleto", "Pedido incompleto"),
+        ("producto_danado", "Producto danado"),
+        ("repartidor_problema", "Problema con el repartidor"),
+        ("cobro_incorrecto", "Cobro incorrecto"),
+        ("otro", "Otro"),
+    ]
+    ESTADOS = [
+        ("abierto", "Abierto"),
+        ("en_proceso", "En proceso"),
+        ("resuelto", "Resuelto"),
+        ("rechazado", "Rechazado"),
+    ]
+    ESTADOS_ACTIVOS = ("abierto", "en_proceso")
+
+    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="incidencias")
+    cliente_id = models.BigIntegerField()
+    tipo = models.CharField(max_length=30, choices=TIPOS)
+    descripcion = models.TextField()
+    estado = models.CharField(max_length=20, choices=ESTADOS, default="abierto")
+    respuesta = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "incidencia"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Incidencia #{self.id} - Pedido #{self.pedido_id} - {self.estado}"
