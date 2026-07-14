@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registro-servicios
+  namespace: llegaya
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registro-servicios
+  template:
+    metadata:
+      labels:
+        app: registro-servicios
+    spec:
+      containers:
+        - name: registro-servicios
+          image: llegaya/registro-servicios:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8500
+          env:
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+          readinessProbe:
+            httpGet:
+              path: /salud
+              port: 8500
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /salud
+              port: 8500
+            initialDelaySeconds: 10
+            periodSeconds: 15

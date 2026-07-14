@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servicio-repartidores
+  namespace: llegaya
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: servicio-repartidores
+  template:
+    metadata:
+      labels:
+        app: servicio-repartidores
+    spec:
+      containers:
+        - name: servicio-repartidores
+          image: llegaya/servicio-repartidores:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8005
+          envFrom:
+            - configMapRef:
+                name: servicio-repartidores-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llegaya-secrets
+                  key: SECRET_KEY
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: servicio-repartidores-db-secret
+                  key: MONGO_URI
+          readinessProbe:
+            httpGet:
+              path: /salud/
+              port: 8005
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /salud/
+              port: 8005
+            initialDelaySeconds: 15
+            periodSeconds: 15
