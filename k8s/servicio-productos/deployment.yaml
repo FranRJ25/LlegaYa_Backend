@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servicio-productos
+  namespace: llegaya
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: servicio-productos
+  template:
+    metadata:
+      labels:
+        app: servicio-productos
+    spec:
+      containers:
+        - name: servicio-productos
+          image: llegaya/servicio-productos:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8003
+          envFrom:
+            - configMapRef:
+                name: servicio-productos-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llegaya-secrets
+                  key: SECRET_KEY
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: servicio-productos-db-secret
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /salud/
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /salud/
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 15

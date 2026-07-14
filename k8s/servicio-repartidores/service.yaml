@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: servicio-repartidores
+  namespace: llegaya
+spec:
+  type: ClusterIP
+  selector:
+    app: servicio-repartidores
+  ports:
+    - port: 8005
+      targetPort: 8005

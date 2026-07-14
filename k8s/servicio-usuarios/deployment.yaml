@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: servicio-usuarios-data
+  namespace: llegaya
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: servicio-usuarios-media
+  namespace: llegaya
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servicio-usuarios
+  namespace: llegaya
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: servicio-usuarios
+  template:
+    metadata:
+      labels:
+        app: servicio-usuarios
+    spec:
+      containers:
+        - name: servicio-usuarios
+          image: llegaya/servicio-usuarios:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: servicio-usuarios-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llegaya-secrets
+                  key: SECRET_KEY
+            - name: EMAIL_HOST_USER
+              valueFrom:
+                secretKeyRef:
+                  name: llegaya-secrets
+                  key: EMAIL_HOST_USER
+            - name: EMAIL_HOST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: llegaya-secrets
+                  key: EMAIL_HOST_PASSWORD
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: servicio-usuarios-db-secret
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: media
+              mountPath: /app/media
+          readinessProbe:
+            httpGet:
+              path: /salud/
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /salud/
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: servicio-usuarios-data
+        - name: media
+          persistentVolumeClaim:
+            claimName: servicio-usuarios-media

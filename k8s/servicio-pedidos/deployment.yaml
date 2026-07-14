@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servicio-pedidos
+  namespace: llegaya
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: servicio-pedidos
+  template:
+    metadata:
+      labels:
+        app: servicio-pedidos
+    spec:
+      containers:
+        - name: servicio-pedidos
+          image: llegaya/servicio-pedidos:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8004
+          envFrom:
+            - configMapRef:
+                name: servicio-pedidos-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llegaya-secrets
+                  key: SECRET_KEY
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sqlserver-secret
+                  key: SA_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /salud/
+              port: 8004
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /salud/
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 15

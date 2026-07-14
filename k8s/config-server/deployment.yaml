@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  namespace: llegaya
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-server
+  template:
+    metadata:
+      labels:
+        app: config-server
+    spec:
+      containers:
+        - name: config-server
+          image: llegaya/config-server:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8600
+          readinessProbe:
+            httpGet:
+              path: /salud
+              port: 8600
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /salud
+              port: 8600
+            initialDelaySeconds: 10
+            periodSeconds: 15

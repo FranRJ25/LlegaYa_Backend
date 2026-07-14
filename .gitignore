@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+staticfiles/
+media/
+db.sqlite3
+.env
+
+# microservicios: bases de datos locales y media generados en runtime
+*/data/db.sqlite3
+servicio-usuarios/media/

@@ -1,0 +1,9 @@
+Django==5.2.13
+djangorestframework==3.17.1
+djangorestframework_simplejwt==5.5.1
+django-cors-headers==4.9.0
+mssql-django==1.7.3
+pyodbc==5.2.0
+gunicorn==26.0.0
+python-dotenv==1.2.2
+requests==2.32.3
