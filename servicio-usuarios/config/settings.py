@@ -14,6 +14,12 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "clave-insegura-solo-para-desarrollo")
 DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 
+# Cuando el frontend vive en otro dominio (Vercel) y el backend se expone vía
+# ngrok, la cookie de refresh es cross-site: necesita SameSite=None + Secure,
+# o el navegador la descarta. En desarrollo local (mismo origen aprox., http)
+# se deja SameSite=Lax para no requerir https.
+COOKIE_CROSS_SITE = os.environ.get("COOKIE_CROSS_SITE", "false").lower() == "true"
+
 # --- Bootstrap de microservicio (no proviene del Config Server, evita circularidad) ---
 NOMBRE_SERVICIO = os.environ.get("NOMBRE_SERVICIO", "servicio-usuarios")
 DJANGO_PERFIL = os.environ.get("DJANGO_PERFIL", "docker")

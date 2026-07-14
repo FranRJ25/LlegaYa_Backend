@@ -5,7 +5,8 @@ x-django-common: &django-common
   DJANGO_PERFIL: docker
   DEBUG: "true"
   SECRET_KEY: ${SECRET_KEY:-llegaya-clave-dev-cambiar-en-produccion}
-  CORS_ALLOWED_ORIGINS: http://localhost:4200,http://localhost:8080
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:8080}
+  COOKIE_CROSS_SITE: ${COOKIE_CROSS_SITE:-false}
 
 services:
   redis:
@@ -90,6 +91,7 @@ services:
     networks: [llegaya-network]
     environment:
       REGISTRO_SERVICIOS_URL: http://registro-servicios:8500
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:8080}
     ports:
       - "8080:8080"
     depends_on:
