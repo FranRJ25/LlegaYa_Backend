@@ -28,3 +28,16 @@ def obtener_negocio(negocio_id: int, auth_header: str | None) -> dict | None:
     except requests.RequestException:
         pass
     return None
+
+
+def obtener_mi_negocio(auth_header: str | None) -> dict | None:
+    """Resuelve el negocio del usuario autenticado (via su propio token),
+    a diferencia de obtener_negocio() que requiere conocer el negocio_id de antemano."""
+    headers = {"Authorization": auth_header} if auth_header else None
+    try:
+        resp = llamar("GET", "/api/negocios/mi-negocio/", headers=headers)
+        if resp.status_code == 200:
+            return resp.json()
+    except requests.RequestException:
+        pass
+    return None

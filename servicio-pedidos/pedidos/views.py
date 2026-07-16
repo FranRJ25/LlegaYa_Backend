@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.permissions import EsAdmin, EsAdminORepartidor
-from core.service_client import obtener_negocio, obtener_producto
+from core.service_client import obtener_mi_negocio, obtener_negocio, obtener_producto
 
 from .models import Calificacion, DetallePedido, Incidencia, Pago, Pedido
 from .serializers import (
@@ -86,6 +86,16 @@ class ListaMisPedidosView(APIView):
         pedidos = Pedido.objects.filter(cliente_id=request.user.id).order_by("-created_at")
         return Response(PedidoSerializer(pedidos, many=True).data)
 
+
+class ListaPedidosNegocioView(APIView):
+
+    def get(self, request):
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        negocio = obtener_mi_negocio(auth_header)
+        if not negocio:
+            return Response({"detail": "No tienes un negocio registrado."}, status=status.HTTP_404_NOT_FOUND)
+        pedidos = Pedido.objects.filter(negocio_id=negocio["id"]).order_by("-created_at")
+        return Response(PedidoSerializer(pedidos, many=True).data)
 
 class DetallePedidoView(APIView):
     def get(self, request, pk):

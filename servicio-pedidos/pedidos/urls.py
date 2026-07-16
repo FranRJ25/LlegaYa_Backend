@@ -13,6 +13,7 @@ from .views import (
     HistorialPagosView,
     IncidenciasListView,
     ListaMisPedidosView,
+    ListaPedidosNegocioView,
     PagarPedidoView,
     PedidosDisponiblesView,
     PrediccionDemandaView,
@@ -26,6 +27,7 @@ urlpatterns = [
     path("crear/", CrearPedidoView.as_view(), name="pedidos-crear"),
     path("mis-pedidos/", ListaMisPedidosView.as_view(), name="pedidos-mis-pedidos"),
     path("disponibles/", PedidosDisponiblesView.as_view(), name="pedidos-disponibles"),
+    path("negocio/", ListaPedidosNegocioView.as_view(), name="pedidos-negocio"),
     # Rutas de coleccion (sin <pk>) primero, para que no las capture "<int:pk>/"
     path("pagos/", HistorialPagosView.as_view(), name="pedidos-pagos-historial"),
     path("calificaciones/promedio/", PromedioCalificacionesRepartidorView.as_view(), name="pedidos-calificaciones-promedio"),

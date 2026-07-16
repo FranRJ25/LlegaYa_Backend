@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: servicio-productos
-          image: llegaya/servicio-productos:latest
-          imagePullPolicy: IfNotPresent
+          image: angelazmv/servicio-productos:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8003
           envFrom:

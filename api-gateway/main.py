@@ -53,7 +53,7 @@ async def _resolver_instancia(nombre_servicio: str) -> dict | None:
         return None
 
 
-@app.api_route("/api/{prefijo}/{resto_ruta:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@app.api_route("/api/{prefijo}/{resto_ruta:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE","OPTIONS"])
 async def proxy(prefijo: str, resto_ruta: str, request: Request):
     nombre_servicio = RUTAS.get(prefijo)
     if nombre_servicio is None:

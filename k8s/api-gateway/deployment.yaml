@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: llegaya/api-gateway:latest
-          imagePullPolicy: IfNotPresent
+          image: angelazmv/api-gateway:20260715
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:

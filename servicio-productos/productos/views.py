@@ -66,6 +66,86 @@ class DetalleProductoView(APIView):
             return Response({"detail": "Producto no encontrado."}, status=status.HTTP_404_NOT_FOUND)
         return Response(ProductoSerializer(producto).data)
 
+    def get(self, request, pk):
+        producto = Producto.objects.filter(pk=pk).first()
+        if not producto:
+            return Response(
+                {"detail": "Producto no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(ProductoSerializer(producto).data)
+
+    def patch(self, request, pk):
+        producto = Producto.objects.filter(pk=pk).first()
+
+        if not producto:
+            return Response(
+                {"detail": "Producto no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not _es_propietario_del_negocio(producto.negocio_id, request):
+            return Response(
+                {"detail": "No eres propietario de ese negocio."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ProductoSerializer(
+            producto,
+            data=request.data,
+            partial=True
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        cambios = []
+
+        for campo in ["nombre", "descripcion", "categoria", "precio", "disponible"]:
+            if campo in serializer.validated_data:
+                anterior = getattr(producto, campo)
+                nuevo = serializer.validated_data[campo]
+                if anterior != nuevo:
+                    cambios.append((campo, anterior, nuevo))
+
+        serializer.save()
+
+        for tipo, anterior, nuevo in cambios:
+            _registrar_cambio(
+                serializer.instance,
+                request.user.id,
+                tipo,
+                anterior,
+                nuevo,
+            )
+
+        return Response(serializer.data)
+
+    def delete(self, request, pk):
+        producto = Producto.objects.filter(pk=pk).first()
+
+        if not producto:
+            return Response(
+                {"detail": "Producto no encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not _es_propietario_del_negocio(producto.negocio_id, request):
+            return Response(
+                {"detail": "No eres propietario de ese negocio."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        _registrar_cambio(
+            producto,
+            request.user.id,
+            "eliminacion",
+            valor_anterior=producto.nombre,
+        )
+
+        producto.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ToggleDisponibilidadProductoView(APIView):
     def patch(self, request, pk):
