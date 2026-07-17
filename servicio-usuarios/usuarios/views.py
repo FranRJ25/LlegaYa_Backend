@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.mail import send_mail
+from requests import request
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,9 +10,10 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from core.service_client import llamar
 
 from .cookies import NOMBRE_COOKIE_REFRESH, delete_refresh_cookie, set_refresh_cookie
-from .models import PasswordResetToken, Usuario
+from .models import PasswordResetToken, Rol, Usuario
 from .serializers import (
     CustomTokenObtainPairSerializer,
     PasswordResetConfirmSerializer,
@@ -81,6 +83,49 @@ class LogoutView(APIView):
         return response
 
 
+class RegisterRepartidorView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+
+        rol_obj, _ = Rol.objects.get_or_create(nombre=Rol.REPARTIDOR)
+
+        usuario = Usuario(
+            nombre=request.data["nombres"],
+            apellido=request.data["apellidos"],
+            email=request.data["email"],
+            telefono=request.data["celular"],
+            rol=rol_obj,
+        )
+
+        usuario.set_password(request.data["password"])
+        usuario.save()
+
+        respuesta = llamar(
+            "POST",
+            "/api/repartidores/register/",
+            json={
+                "usuario_id": usuario.id,
+                "dni": request.data["dni"],
+                "vehiculo": request.data["vehiculo"],
+                "zona_cobertura": request.data.get("zona_cobertura", ""),
+            },
+        )
+
+        if respuesta.status_code >= 400:
+            usuario.delete()
+
+            return Response(
+                respuesta.json(),
+                status=respuesta.status_code,
+            )
+
+        return Response(
+            UsuarioSerializer(usuario).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class PerfilView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -93,7 +138,7 @@ class PerfilView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
-
+    
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]

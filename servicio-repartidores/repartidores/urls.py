@@ -6,9 +6,11 @@ from .views import (
     PromedioCalificacionesRepartidorView,
     ToggleDisponibilidadRepartidorView,
     TomarPedidoView,
+    RegisterRepartidorView,
 )
 
 urlpatterns = [
+    path("register/",RegisterRepartidorView.as_view(),name="repartidores-register",),
     path("perfil/", MiPerfilRepartidorView.as_view(), name="repartidores-perfil"),
     path("perfil/disponibilidad/", ToggleDisponibilidadRepartidorView.as_view(), name="repartidores-disponibilidad"),
     path("pedidos-disponibles/", PedidosDisponiblesView.as_view(), name="repartidores-pedidos-disponibles"),

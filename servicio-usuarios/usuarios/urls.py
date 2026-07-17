@@ -8,10 +8,12 @@ from .views import (
     PasswordResetRequestView,
     PerfilView,
     RegisterView,
+    RegisterRepartidorView,
 )
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="usuarios-register"),
+    path("repartidor/register/",RegisterRepartidorView.as_view(),name="usuarios-register-repartidor",),
     path("login/", LoginView.as_view(), name="usuarios-login"),
     path("token/refresh/", CookieTokenRefreshView.as_view(), name="usuarios-token-refresh"),
     path("logout/", LogoutView.as_view(), name="usuarios-logout"),

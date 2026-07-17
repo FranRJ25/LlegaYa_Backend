@@ -3,6 +3,7 @@ from mongoengine.errors import NotUniqueError
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 
 from core.permissions import EsRepartidor
 from core.service_client import llamar
@@ -129,3 +130,35 @@ class PromedioCalificacionesRepartidorView(APIView):
             return Response({"detail": "servicio-pedidos no disponible"}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(resp.json(), status=resp.status_code)
+
+
+class RegisterRepartidorView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        usuario_id = request.data.get("usuario_id")
+
+        if not usuario_id:
+            return Response(
+                {"detail": "usuario_id es obligatorio."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if PerfilRepartidor.objects(usuario_id=usuario_id).first():
+            return Response(
+                {"detail": "El perfil ya existe."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PerfilRepartidorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        perfil = PerfilRepartidor(
+            usuario_id=usuario_id,
+            **serializer.validated_data
+        ).save()
+
+        return Response(
+            PerfilRepartidorSerializer(perfil).data,
+            status=status.HTTP_201_CREATED,
+        )

@@ -45,6 +45,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+API_GATEWAY_URL = os.environ.get("API_GATEWAY_URL", "http://api-gateway:8080")
 
 TEMPLATES = [
     {

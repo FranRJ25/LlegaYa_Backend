@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: servicio-repartidores
-          image: llegaya/servicio-repartidores:latest
-          imagePullPolicy: IfNotPresent
+          image: angelazmv/servicio-repartidores:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8005
           envFrom:
