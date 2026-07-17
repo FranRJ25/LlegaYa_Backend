@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    ActualizarEstadoPedidoView,
     AsignarRepartidorView,
     CalificacionPedidoView,
     CalificarPedidoView,
@@ -14,6 +15,7 @@ from .views import (
     IncidenciasListView,
     ListaMisPedidosView,
     ListaPedidosNegocioView,
+    MisEntregasView,
     PagarPedidoView,
     PedidosDisponiblesView,
     PrediccionDemandaView,
@@ -28,6 +30,7 @@ urlpatterns = [
     path("mis-pedidos/", ListaMisPedidosView.as_view(), name="pedidos-mis-pedidos"),
     path("disponibles/", PedidosDisponiblesView.as_view(), name="pedidos-disponibles"),
     path("negocio/", ListaPedidosNegocioView.as_view(), name="pedidos-negocio"),
+    path("mis-entregas/", MisEntregasView.as_view(), name="pedidos-mis-entregas"),
     # Rutas de coleccion (sin <pk>) primero, para que no las capture "<int:pk>/"
     path("pagos/", HistorialPagosView.as_view(), name="pedidos-pagos-historial"),
     path("calificaciones/promedio/", PromedioCalificacionesRepartidorView.as_view(), name="pedidos-calificaciones-promedio"),
@@ -40,6 +43,7 @@ urlpatterns = [
     path("<int:pk>/detalle/", DetallePedidoConPagoView.as_view(), name="pedidos-detalle-con-pago"),
     path("<int:pk>/cancelar/", CancelarPedidoView.as_view(), name="pedidos-cancelar"),
     path("<int:pk>/completar/", CompletarPedidoView.as_view(), name="pedidos-completar"),
+    path("<int:pk>/estado/", ActualizarEstadoPedidoView.as_view(), name="pedidos-estado"),
     path("<int:pk>/asignar-repartidor/", AsignarRepartidorView.as_view(), name="pedidos-asignar-repartidor"),
     path("<int:pk>/pagar/", PagarPedidoView.as_view(), name="pedidos-pagar"),
     path("<int:pk>/calificar/", CalificarPedidoView.as_view(), name="pedidos-calificar"),

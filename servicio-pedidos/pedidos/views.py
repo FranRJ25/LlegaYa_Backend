@@ -87,6 +87,15 @@ class ListaMisPedidosView(APIView):
         return Response(PedidoSerializer(pedidos, many=True).data)
 
 
+class MisEntregasView(APIView):
+    """Usado por un repartidor para ver los pedidos que tiene asignados
+    (a diferencia de ListaMisPedidosView, que filtra por cliente_id)."""
+
+    def get(self, request):
+        pedidos = Pedido.objects.filter(repartidor_id=request.user.id).order_by("-created_at")
+        return Response(PedidoSerializer(pedidos, many=True).data)
+
+
 class ListaPedidosNegocioView(APIView):
 
     def get(self, request):
@@ -125,12 +134,46 @@ class CompletarPedidoView(APIView):
         pedido = Pedido.objects.filter(pk=pk).first()
         if not pedido:
             return Response({"detail": "Pedido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
-        if pedido.estado not in ("confirmado", "en_camino"):
+        if pedido.estado not in ("confirmado", "en_camino", "entregado"):
             return Response(
                 {"detail": "El pedido no esta en un estado que se pueda completar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         pedido.estado = "completado"
+        pedido.save(update_fields=["estado"])
+        return Response(PedidoSerializer(pedido).data)
+
+
+TRANSICIONES_VALIDAS_REPARTIDOR = {
+    "confirmado": "en_camino",
+    "en_camino": "entregado",
+}
+
+
+class ActualizarEstadoPedidoView(APIView):
+    """PUT /api/pedidos/<pk>/estado/  Body: { "estado": "en_camino" | "entregado" }
+    Usado por el repartidor asignado al pedido para avanzar su propio flujo de
+    entrega: confirmado -> en_camino -> entregado."""
+
+    def put(self, request, pk):
+        pedido = Pedido.objects.filter(pk=pk).first()
+        if not pedido:
+            return Response({"detail": "Pedido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if str(pedido.repartidor_id) != str(request.user.id):
+            return Response(
+                {"detail": "No tienes permiso para actualizar este pedido."}, status=status.HTTP_403_FORBIDDEN
+            )
+
+        nuevo_estado = request.data.get("estado")
+        esperado = TRANSICIONES_VALIDAS_REPARTIDOR.get(pedido.estado)
+        if nuevo_estado != esperado:
+            return Response(
+                {"detail": f"Transicion invalida: el pedido esta en '{pedido.estado}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        pedido.estado = nuevo_estado
         pedido.save(update_fields=["estado"])
         return Response(PedidoSerializer(pedido).data)
 
@@ -275,7 +318,7 @@ class CalificarPedidoView(APIView):
         if not pedido:
             return Response({"detail": "Pedido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        if pedido.cliente_id != request.user.id:
+        if str(pedido.cliente_id) != str(request.user.id):
             return Response(
                 {"detail": "No tienes permiso para calificar este pedido."}, status=status.HTTP_403_FORBIDDEN
             )
@@ -308,7 +351,7 @@ class CalificacionPedidoView(APIView):
         if not pedido:
             return Response({"detail": "Pedido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        if pedido.cliente_id != request.user.id and pedido.repartidor_id != request.user.id:
+        if str(pedido.cliente_id) != str(request.user.id) and str(pedido.repartidor_id) != str(request.user.id):
             return Response(
                 {"detail": "No tienes permiso para ver esta calificacion."}, status=status.HTTP_403_FORBIDDEN
             )
@@ -349,7 +392,7 @@ class CrearIncidenciaView(APIView):
         if not pedido:
             return Response({"detail": "Pedido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        if pedido.cliente_id != request.user.id:
+        if str(pedido.cliente_id) != str(request.user.id):
             return Response(
                 {"detail": "No tienes permiso para reportar una incidencia sobre este pedido."},
                 status=status.HTTP_403_FORBIDDEN,
